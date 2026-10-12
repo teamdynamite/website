@@ -37,6 +37,7 @@
   let cells = [];
   let clearZone = null;
   let frameId = 0;
+  let lastTime = 0;
 
   const randomGlyph = () => GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
 
@@ -98,9 +99,17 @@
     ctx.restore();
   }
 
-  function update(time) {
-    pointer.x += (pointer.tx - pointer.x) * 0.25;
-    pointer.y += (pointer.ty - pointer.y) * 0.25;
+  // `dt` is the elapsed time in 60 fps frames. The rates below are tuned per
+  // 60 fps frame and scaled by `dt`, so the effect looks the same at any
+  // refresh rate.
+  function update(time, dt) {
+    const follow = 1 - 0.75 ** dt;
+    const rise = 1 - 0.7 ** dt;
+    const decay = 0.94 ** dt;
+    const flicker = 1 - (1 - 0.0008) ** dt;
+
+    pointer.x += (pointer.tx - pointer.x) * follow;
+    pointer.y += (pointer.ty - pointer.y) * follow;
 
     for (let i = ripples.length - 1; i >= 0; i--) {
       ripples[i].age = (time - ripples[i].start) / 1000;
@@ -130,14 +139,14 @@
         }
 
         if (target > cell.heat) {
-          cell.heat += (target - cell.heat) * 0.3;
+          cell.heat += (target - cell.heat) * rise;
         } else {
-          cell.heat *= 0.94;
+          cell.heat *= decay;
         }
 
-        if (cell.heat > 0.15 && Math.random() < cell.heat * 0.25) {
+        if (cell.heat > 0.15 && Math.random() < 1 - (1 - cell.heat * 0.25) ** dt) {
           cell.glyph = randomGlyph();
-        } else if (Math.random() < 0.0008) {
+        } else if (Math.random() < flicker) {
           // Idle flicker, so the field is never fully still.
           cell.glyph = randomGlyph();
           cell.heat = Math.max(cell.heat, 0.25);
@@ -164,13 +173,16 @@
   }
 
   function loop(time) {
-    update(time);
+    const dt = lastTime ? Math.min((time - lastTime) / (1000 / 60), 3) : 1;
+    lastTime = time;
+    update(time, dt);
     draw();
     frameId = requestAnimationFrame(loop);
   }
 
   function start() {
     cancelAnimationFrame(frameId);
+    lastTime = 0;
     if (reducedMotion.matches) {
       draw();
     } else {
